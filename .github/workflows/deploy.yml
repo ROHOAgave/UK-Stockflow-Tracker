@@ -1,48 +1,4 @@
-- name: Create React files
-      run: |
-          cat > src/index.js << 'EOL'
-          import React from "react";
-          import ReactDOM from "react-dom/client";
-          import "./index.css";
-          import ShipmentPlanningTool from "./components/ShipmentPlanningTool";
-
-          // Simple app wrapper
-          const App = () => {
-            return <ShipmentPlanningTool />;
-          };
-          
-          // Error boundary to catch rendering errors
-          class ErrorBoundary extends React.Component {
-            constructor(props) {
-              super(props);
-              this.state = { hasError: false, error: null };
-            }
-            
-            static getDerivedStateFromError(error) {
-              return { hasError: true, error };
-            }
-            
-            render() {
-              if (this.state.hasError) {
-                return (
-                  <div style={{ padding: '20px', color: 'red', background: '#fee', border: '1px solid red', margin: '20px' }}>
-                    <h2>Something went wrong.</h2>
-                    <p>{this.state.error?.toString()}</p>
-                  </div>
-                );
-              }
-              
-              return this.props.children;
-            }
-          }
-          
-          const root = ReactDOM.createRoot(document.getElementById("root"));
-          root.render(
-            <ErrorBoundary>
-              <App />
-            </ErrorBoundary>
-          );
-          EOLname: Deploy Shipment Planning Tool
+name: Deploy Shipment Planning Tool
 
 on:
   push:
@@ -118,25 +74,6 @@ jobs:
         }
         EOL
 
-    - name: Create HTML
-      run: |
-          cat > public/index.html << 'EOL'
-          <!DOCTYPE html>
-          <html lang="en">
-            <head>
-              <meta charset="utf-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1" />
-              <title>Shipment Planning Tool</title>
-              <style>
-                body { margin: 0; padding: 0; }
-              </style>
-            </head>
-            <body>
-              <div id="root"></div>
-            </body>
-          </html>
-          EOL
-          
     - name: Create Tailwind configuration
       run: |
         cat > tailwind.config.js << 'EOL'
@@ -177,6 +114,71 @@ jobs:
           -moz-osx-font-smoothing: grayscale;
         }
         EOL
+
+    - name: Create HTML
+      run: |
+          cat > public/index.html << 'EOL'
+          <!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>Shipment Planning Tool</title>
+              <style>
+                body { margin: 0; padding: 0; }
+              </style>
+            </head>
+            <body>
+              <div id="root"></div>
+            </body>
+          </html>
+          EOL
+          
+    - name: Create React files
+      run: |
+          cat > src/index.js << 'EOL'
+          import React from "react";
+          import ReactDOM from "react-dom/client";
+          import "./index.css";
+          import ShipmentPlanningTool from "./components/ShipmentPlanningTool";
+
+          // Simple app wrapper
+          const App = () => {
+            return <ShipmentPlanningTool />;
+          };
+          
+          // Error boundary to catch rendering errors
+          class ErrorBoundary extends React.Component {
+            constructor(props) {
+              super(props);
+              this.state = { hasError: false, error: null };
+            }
+            
+            static getDerivedStateFromError(error) {
+              return { hasError: true, error };
+            }
+            
+            render() {
+              if (this.state.hasError) {
+                return (
+                  <div style={{ padding: '20px', color: 'red', background: '#fee', border: '1px solid red', margin: '20px' }}>
+                    <h2>Something went wrong.</h2>
+                    <p>{this.state.error?.toString()}</p>
+                  </div>
+                );
+              }
+              
+              return this.props.children;
+            }
+          }
+          
+          const root = ReactDOM.createRoot(document.getElementById("root"));
+          root.render(
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
+          );
+          EOL
           
     - name: Create ShipmentPlanningTool component
       run: |
@@ -759,6 +761,7 @@ jobs:
                   </div>
                 </div>
               </div>
+              </div>
             </div>
           );
         };
@@ -787,3 +790,5 @@ jobs:
           branch: gh-pages
           folder: build
           clean: true
+
+              
