@@ -1,0 +1,760 @@
+name: Deploy Shipment Planning Tool
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+ 
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write # Required for deployment to GitHub Pages
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Create project structure
+      run: |
+        mkdir -p public
+        mkdir -p src/components
+
+    - name: Create package.json
+      run: |
+        cat > package.json << 'EOL'
+        {
+          "name": "shipment-planning-tool",
+          "version": "0.1.0",
+          "private": true,
+          "homepage": ".",
+          "dependencies": {
+            "react": "^18.2.0",
+            "react-dom": "^18.2.0",
+            "react-scripts": "5.0.1",
+            "recharts": "^2.5.0"
+          },
+          "scripts": {
+            "start": "react-scripts start",
+            "build": "react-scripts build",
+            "test": "react-scripts test",
+            "eject": "react-scripts eject"
+          },
+          "eslintConfig": {
+            "extends": [
+              "react-app"
+            ],
+            "rules": {
+              "no-unused-vars": "warn"
+            }
+          },
+          "browserslist": {
+            "production": [
+              ">0.2%",
+              "not dead",
+              "not op_mini all"
+            ],
+            "development": [
+              "last 1 chrome version",
+              "last 1 firefox version",
+              "last 1 safari version"
+            ]
+          }
+        }
+        EOL
+
+    - name: Create HTML
+      run: |
+          cat > public/index.html << 'EOL'
+          <!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>Shipment Planning Tool</title>
+              <style>
+                body { margin: 0; padding: 0; }
+              </style>
+            </head>
+            <body>
+              <div id="root"></div>
+            </body>
+          </html>
+          EOL
+          
+    - name: Create React files
+      run: |
+          cat > src/index.js << 'EOL'
+          import React from "react";
+          import ReactDOM from "react-dom/client";
+          import "./index.css";
+          import ShipmentPlanningTool from "./components/ShipmentPlanningTool";
+
+          // Simple app wrapper
+          const App = () => {
+            return <ShipmentPlanningTool />;
+          };
+          
+          // Error boundary to catch rendering errors
+          class ErrorBoundary extends React.Component {
+            constructor(props) {
+              super(props);
+              this.state = { hasError: false, error: null };
+            }
+            
+            static getDerivedStateFromError(error) {
+              return { hasError: true, error };
+            }
+            
+            render() {
+              if (this.state.hasError) {
+                return (
+                  <div style={{ padding: '20px', color: 'red', background: '#fee', border: '1px solid red', margin: '20px' }}>
+                    <h2>Something went wrong.</h2>
+                    <p>{this.state.error?.toString()}</p>
+                  </div>
+                );
+              }
+              
+              return this.props.children;
+            }
+          }
+          
+          const root = ReactDOM.createRoot(document.getElementById("root"));
+          root.render(
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
+          );
+          EOL
+          
+          cat > src/index.css << 'EOL'
+          @import url('https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css');
+          
+          body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+              'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+              sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+          }
+          EOL
+          
+    - name: Create ShipmentPlanningTool component
+      run: |
+        cat > src/components/ShipmentPlanningTool.js << 'EOL'
+        import React, { useState, useEffect } from 'react';
+        import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+
+        const ShipmentPlanningTool = () => {
+          // State variables
+          const [shippingDays, setShippingDays] = useState(45);
+          
+          const [shipments, setShipments] = useState([
+            { id: 1, shipmentDate: '2025-06-01', quantity: 200 },
+            { id: 2, shipmentDate: '2025-07-01', quantity: 250 },
+            { id: 3, shipmentDate: '2025-08-01', quantity: 300 }
+          ]);
+          
+          const [accounts, setAccounts] = useState([
+            { id: 1, name: "Account 1", accountType: "regular", initialOrder: 12, weeklySales: 6, startDate: '2025-06-01' },
+            { id: 2, name: "Account 2", accountType: "regular", initialOrder: 24, weeklySales: 6, startDate: '2025-07-01' },
+            { id: 3, name: "Wholesaler 1", accountType: "oneoff", initialOrder: 36, weeklySales: 0, startDate: '2025-06-15' }
+          ]);
+          
+          const [inventoryData, setInventoryData] = useState({ weekly: [], monthly: [] });
+          const [nextShipmentId, setNextShipmentId] = useState(4);
+          const [nextAccountId, setNextAccountId] = useState(4);
+          
+          // Date formatting helpers
+          const formatDate = (dateString) => {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-GB', { 
+              day: 'numeric', 
+              month: 'short', 
+              year: 'numeric' 
+            });
+          };
+          
+          const getMonthName = (dateString) => {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+          };
+          
+          // Add days to a date
+          const addDays = (dateString, days) => {
+            const date = new Date(dateString);
+            date.setDate(date.getDate() + days);
+            return date.toISOString().split('T')[0];
+          };
+          
+          // Calculate arrival dates for shipments
+          const getShipmentsWithArrivals = () => {
+            return shipments.map(shipment => ({
+              ...shipment,
+              arrivalDate: addDays(shipment.shipmentDate, shippingDays),
+              month: getMonthName(shipment.shipmentDate)
+            })).sort((a, b) => new Date(a.shipmentDate) - new Date(b.shipmentDate));
+          };
+
+          // Calculate weekly sales and inventory
+          const calculateInventoryData = () => {
+            const processedShipments = getShipmentsWithArrivals();
+            
+            if (processedShipments.length === 0) {
+              return { weekly: [], monthly: [] };
+            }
+            
+            // Find the earliest date (first shipment date or account start)
+            const allDates = [
+              ...processedShipments.map(s => new Date(s.shipmentDate)),
+              ...accounts.map(a => new Date(a.startDate))
+            ];
+            const startDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+            
+            // Find the latest date (last arrival date + 12 weeks)
+            const lastArrival = new Date(Math.max(
+              ...processedShipments.map(s => new Date(s.arrivalDate).getTime())
+            ));
+            const endDate = new Date(lastArrival);
+            endDate.setDate(endDate.getDate() + 84); // 12 weeks after last arrival
+            
+            // Create weekly data points
+            const weeklyData = [];
+            let currentDate = new Date(startDate);
+            let currentStock = 0;
+            
+            // Track which accounts have had their initial orders processed
+            const processedInitialOrders = new Set();
+            
+            // Process each week
+            while (currentDate <= endDate) {
+              const weekDateString = currentDate.toISOString().split('T')[0];
+              
+              // 1. Check for shipment arrivals this week
+              const arrivalsThisWeek = processedShipments.filter(shipment => {
+                const arrivalDate = new Date(shipment.arrivalDate);
+                return arrivalDate <= currentDate && 
+                       arrivalDate > new Date(currentDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+              });
+              
+              const totalArrivals = arrivalsThisWeek.reduce((sum, s) => sum + s.quantity, 0);
+              
+              // Add arrived shipments to stock
+              currentStock += totalArrivals;
+              
+              // 2. Calculate sales for this week
+              let regularSales = 0;
+              let initialOrdersThisWeek = 0;
+              
+              accounts.forEach(account => {
+                const accountStartDate = new Date(account.startDate);
+                
+                // Check if account is active this week
+                if (accountStartDate <= currentDate) {
+                  // Process initial order (only once when account starts)
+                  if (!processedInitialOrders.has(account.id)) {
+                    const orderStartDate = new Date(account.startDate);
+                    const weekEnd = new Date(currentDate.getTime() + 6 * 24 * 60 * 60 * 1000);
+                    
+                    if (orderStartDate <= weekEnd) {
+                      initialOrdersThisWeek += account.initialOrder;
+                      processedInitialOrders.add(account.id);
+                    }
+                  }
+                  
+                  // Add weekly sales for regular accounts
+                  if (account.accountType === "regular") {
+                    regularSales += account.weeklySales;
+                  }
+                }
+              });
+              
+              const totalSales = regularSales + initialOrdersThisWeek;
+              
+              // 3. Subtract sales from inventory (can't go below 0)
+              currentStock = Math.max(0, currentStock - totalSales);
+              
+              // 4. Record this week's data
+              weeklyData.push({
+                date: weekDateString,
+                formattedDate: formatDate(weekDateString),
+                month: getMonthName(weekDateString),
+                inventory: currentStock,
+                regularSales: regularSales,
+                initialOrders: initialOrdersThisWeek,
+                totalSales: totalSales,
+                arrivals: totalArrivals
+              });
+              
+              // Move to next week
+              currentDate.setDate(currentDate.getDate() + 7);
+            }
+            
+            // Aggregate data by month
+            const monthlyData = {};
+            
+            weeklyData.forEach(week => {
+              if (!monthlyData[week.month]) {
+                monthlyData[week.month] = {
+                  month: week.month,
+                  endingInventory: week.inventory,
+                  arrivals: week.arrivals,
+                  regularSales: week.regularSales,
+                  initialOrders: week.initialOrders,
+                  totalSales: week.totalSales
+                };
+              } else {
+                monthlyData[week.month].endingInventory = week.inventory; // Last week's inventory
+                monthlyData[week.month].arrivals += week.arrivals;
+                monthlyData[week.month].regularSales += week.regularSales;
+                monthlyData[week.month].initialOrders += week.initialOrders;
+                monthlyData[week.month].totalSales += week.totalSales;
+              }
+            });
+            
+            return {
+              weekly: weeklyData,
+              monthly: Object.values(monthlyData)
+            };
+          };
+          
+          // Update inventory data when inputs change
+          useEffect(() => {
+            const data = calculateInventoryData();
+            setInventoryData(data);
+          }, [shippingDays, shipments, accounts]);
+          
+          // Handle shipping days change
+          const handleShippingDaysChange = (e) => {
+            setShippingDays(parseInt(e.target.value, 10));
+          };
+          
+          // Handle individual shipment changes
+          const handleShipmentChange = (id, field, value) => {
+            setShipments(shipments.map(shipment => {
+              if (shipment.id === id) {
+                return {
+                  ...shipment,
+                  [field]: field === 'shipmentDate' ? value : parseInt(value, 10)
+                };
+              }
+              return shipment;
+            }));
+          };
+          
+          // Add a new shipment
+          const addShipment = () => {
+            // Find the latest shipment date
+            let latestDate = new Date();
+            if (shipments.length > 0) {
+              latestDate = new Date(Math.max(
+                ...shipments.map(s => new Date(s.shipmentDate).getTime())
+              ));
+              // Add 1 month to latest date
+              latestDate.setMonth(latestDate.getMonth() + 1);
+            }
+            
+            const newShipment = {
+              id: nextShipmentId,
+              shipmentDate: latestDate.toISOString().split('T')[0],
+              quantity: 200
+            };
+            
+            setShipments([...shipments, newShipment]);
+            setNextShipmentId(nextShipmentId + 1);
+          };
+          
+          // Remove a shipment
+          const removeShipment = (id) => {
+            setShipments(shipments.filter(shipment => shipment.id !== id));
+          };
+          
+          // Handle account changes
+          const handleAccountChange = (id, field, value) => {
+            setAccounts(accounts.map(account => {
+              if (account.id === id) {
+                // For accountType field, update related fields accordingly
+                if (field === 'accountType') {
+                  if (value === 'oneoff') {
+                    return {
+                      ...account,
+                      accountType: value,
+                      weeklySales: 0 // One-off accounts don't have weekly sales
+                    };
+                  } else {
+                    return {
+                      ...account,
+                      accountType: value,
+                      weeklySales: 6 // Default weekly sales for regular accounts
+                    };
+                  }
+                }
+                
+                // For other fields
+                return { 
+                  ...account, 
+                  [field]: field === 'name' || field === 'accountType' || field === 'startDate' 
+                    ? value 
+                    : parseInt(value, 10) 
+                };
+              }
+              return account;
+            }));
+          };
+          
+          // Add a new account
+          const addAccount = (type = "regular") => {
+            // Find earliest shipment date to use as default start date
+            let earliestShipmentDate = new Date();
+            if (shipments.length > 0) {
+              earliestShipmentDate = new Date(Math.min(
+                ...shipments.map(s => new Date(s.shipmentDate).getTime())
+              ));
+            }
+            
+            const newAccount = {
+              id: nextAccountId,
+              name: type === "regular" ? `Account ${nextAccountId}` : `Wholesaler ${nextAccountId}`,
+              accountType: type,
+              initialOrder: type === "regular" ? 12 : 36,
+              weeklySales: type === "regular" ? 6 : 0,
+              startDate: earliestShipmentDate.toISOString().split('T')[0]
+            };
+            
+            setAccounts([...accounts, newAccount]);
+            setNextAccountId(nextAccountId + 1);
+          };
+          
+          // Remove an account
+          const removeAccount = (id) => {
+            setAccounts(accounts.filter(account => account.id !== id));
+          };
+          
+          // Custom tooltip for monthly chart
+          const MonthlyTooltip = ({ active, payload, label }) => {
+            if (active && payload && payload.length) {
+              const data = payload[0].payload;
+              return (
+                <div className="bg-white p-4 border rounded shadow-md">
+                  <p className="font-semibold">{label}</p>
+                  <p>Bottles Arrived: {data.arrivals}</p>
+                  <p>Total Sales: {data.totalSales}</p>
+                  <p>Ending Inventory: {data.endingInventory}</p>
+                </div>
+              );
+            }
+            return null;
+          };
+          
+          // Custom tooltip for weekly chart
+          const WeeklyTooltip = ({ active, payload, label }) => {
+            if (active && payload && payload.length) {
+              const data = payload[0].payload;
+              return (
+                <div className="bg-white p-4 border rounded shadow-md">
+                  <p className="font-semibold">{data.formattedDate}</p>
+                  <p>Inventory: {data.inventory} bottles</p>
+                  <p>Total Sales: {data.totalSales} bottles</p>
+                  {data.arrivals > 0 && <p>Bottles Arrived: {data.arrivals}</p>}
+                </div>
+              );
+            }
+            return null;
+          };
+          
+          return (
+            <div className="p-4 max-w-6xl mx-auto">
+              <h1 className="text-2xl font-bold mb-6">Bottle Shipment & Sales Planning Tool</h1>
+              
+              {/* Shipment Configuration */}
+              <div className="mb-8 bg-gray-50 p-4 rounded-lg shadow">
+                <h2 className="text-lg font-semibold mb-4">Shipping Settings</h2>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Shipping Time (days)
+                  </label>
+                  <input
+                    type="number"
+                    value={shippingDays}
+                    onChange={handleShippingDaysChange}
+                    min="1"
+                    className="w-full md:w-48 p-2 border rounded"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">This applies to all shipments</p>
+                </div>
+                
+                <h2 className="text-lg font-semibold mb-4">Shipment Schedule</h2>
+                
+                <div className="overflow-x-auto mb-4">
+                  <table className="min-w-full bg-white border border-gray-200">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="py-2 px-4 border text-left">Shipment Date</th>
+                        <th className="py-2 px-4 border text-left">Quantity (bottles)</th>
+                        <th className="py-2 px-4 border text-left">Estimated Arrival</th>
+                        <th className="py-2 px-4 border text-left">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getShipmentsWithArrivals().map(shipment => (
+                        <tr key={shipment.id}>
+                          <td className="py-2 px-4 border">
+                            <input
+                              type="date"
+                              value={shipment.shipmentDate}
+                              onChange={(e) => handleShipmentChange(shipment.id, 'shipmentDate', e.target.value)}
+                              className="w-full p-1 border rounded"
+                            />
+                          </td>
+                          <td className="py-2 px-4 border">
+                            <input
+                              type="number"
+                              value={shipment.quantity}
+                              onChange={(e) => handleShipmentChange(shipment.id, 'quantity', e.target.value)}
+                              min="1"
+                              className="w-full p-1 border rounded"
+                            />
+                          </td>
+                          <td className="py-2 px-4 border">
+                            {formatDate(shipment.arrivalDate)}
+                          </td>
+                          <td className="py-2 px-4 border">
+                            <button
+                              onClick={() => removeShipment(shipment.id)}
+                              disabled={shipments.length <= 1}
+                              className={`px-3 py-1 text-white rounded ${shipments.length <= 1 ? "bg-red-300 cursor-not-allowed" : "bg-red-500 hover:bg-red-600"}`}
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                
+                <button
+                  onClick={addShipment}
+                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 mb-6"
+                >
+                  Add New Shipment
+                </button>
+                
+                <h2 className="text-lg font-semibold mt-6 mb-4">Account Configuration</h2>
+                
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white border border-gray-200 mb-4">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="py-2 px-4 border text-left">Account Name</th>
+                        <th className="py-2 px-4 border text-left">Account Type</th>
+                        <th className="py-2 px-4 border text-left">Initial Order</th>
+                        <th className="py-2 px-4 border text-left">Weekly Sales</th>
+                        <th className="py-2 px-4 border text-left">Start Date</th>
+                        <th className="py-2 px-4 border text-left">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {accounts.map(account => (
+                        <tr key={account.id} className={account.accountType === "oneoff" ? "bg-yellow-50" : ""}>
+                          <td className="py-2 px-4 border">
+                            <input
+                              type="text"
+                              value={account.name}
+                              onChange={(e) => handleAccountChange(account.id, 'name', e.target.value)}
+                              className="w-full p-1 border rounded"
+                            />
+                          </td>
+                          <td className="py-2 px-4 border">
+                            <select
+                              value={account.accountType}
+                              onChange={(e) => handleAccountChange(account.id, 'accountType', e.target.value)}
+                              className="w-full p-1 border rounded"
+                            >
+                              <option value="regular">Regular</option>
+                              <option value="oneoff">One-off Wholesaler</option>
+                            </select>
+                          </td>
+                          <td className="py-2 px-4 border">
+                            <input
+                              type="number"
+                              value={account.initialOrder}
+                              onChange={(e) => handleAccountChange(account.id, 'initialOrder', e.target.value)}
+                              min="0"
+                              className="w-full p-1 border rounded"
+                            />
+                          </td>
+                          <td className="py-2 px-4 border">
+                            <input
+                              type="number"
+                              value={account.weeklySales}
+                              onChange={(e) => handleAccountChange(account.id, 'weeklySales', e.target.value)}
+                              min="0"
+                              disabled={account.accountType === "oneoff"}
+                              className={`w-full p-1 border rounded ${account.accountType === "oneoff" ? "bg-gray-100" : ""}`}
+                            />
+                          </td>
+                          <td className="py-2 px-4 border">
+                            <input
+                              type="date"
+                              value={account.startDate}
+                              onChange={(e) => handleAccountChange(account.id, 'startDate', e.target.value)}
+                              className="w-full p-1 border rounded"
+                            />
+                          </td>
+                          <td className="py-2 px-4 border">
+                            <button
+                              onClick={() => removeAccount(account.id)}
+                              className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600"
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => addAccount("regular")}
+                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  >
+                    Add Regular Account
+                  </button>
+                  
+                  <button
+                    onClick={() => addAccount("oneoff")}
+                    className="px-4 py-2 bg-amber-500 text-white rounded hover:bg-amber-600"
+                  >
+                    Add One-off Wholesaler
+                  </button>
+                </div>
+              </div>
+              
+              {/* Monthly Overview Chart */}
+              <div className="mb-8">
+                <h2 className="text-lg font-semibold mb-4">Monthly Overview</h2>
+                
+                <div style={{ height: "400px" }} className="border rounded p-4 bg-white">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={inventoryData.monthly}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis 
+                        dataKey="month" 
+                        angle={-45} 
+                        textAnchor="end" 
+                        height={60}
+                      />
+                      <YAxis label={{ value: 'Bottles', angle: -90, position: 'insideLeft' }} />
+                      <Tooltip content={<MonthlyTooltip />} />
+                      <Legend />
+                      <Bar dataKey="arrivals" fill="#8884d8" name="Bottles Arrived" />
+                      <Bar dataKey="totalSales" fill="#82ca9d" name="Total Sales" />
+                      <Bar dataKey="endingInventory" fill="#ffc658" name="Ending Inventory" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              
+              {/* Weekly Inventory Chart */}
+              <div className="mb-8">
+                <h2 className="text-lg font-semibold mb-4">Weekly Inventory Detail</h2>
+                
+                <div style={{ height: "400px" }} className="border rounded p-4 bg-white">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={inventoryData.weekly}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis 
+                        dataKey="formattedDate" 
+                        angle={-45} 
+                        textAnchor="end" 
+                        height={60}
+                        tick={{ fontSize: 10 }}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis label={{ value: 'Bottles', angle: -90, position: 'insideLeft' }} />
+                      <Tooltip content={<WeeklyTooltip />} />
+                      <Legend />
+                      <Line type="monotone" dataKey="inventory" stroke="#ffc658" name="Available Inventory" strokeWidth={2} />
+                      <Line type="monotone" dataKey="totalSales" stroke="#82ca9d" name="Weekly Sales" strokeWidth={2} />
+                      <Line type="monotone" dataKey="arrivals" stroke="#8884d8" name="Bottles Arrived" strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              
+              {/* Summary Statistics */}
+              <div className="mb-8">
+                <h2 className="text-lg font-semibold mb-4">Summary Statistics</h2>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white p-4 rounded border shadow">
+                    <h3 className="font-medium text-gray-700 mb-2">Total Shipments</h3>
+                    <p className="text-2xl font-bold">
+                      {shipments.reduce((sum, s) => sum + s.quantity, 0)} bottles
+                    </p>
+                  </div>
+                  
+                  <div className="bg-white p-4 rounded border shadow">
+                    <h3 className="font-medium text-gray-700 mb-2">Total Projected Sales</h3>
+                    <p className="text-2xl font-bold">
+                      {inventoryData.weekly?.reduce((sum, w) => sum + w.totalSales, 0) || 0} bottles
+                    </p>
+                  </div>
+                  
+                  <div className="bg-white p-4 rounded border shadow">
+                    <h3 className="font-medium text-gray-700 mb-2">Ending Inventory</h3>
+                    <p className="text-2xl font-bold">
+                      {inventoryData.weekly?.length ? 
+                        inventoryData.weekly[inventoryData.weekly.length - 1].inventory : 0} bottles
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        export default ShipmentPlanningTool;
+        EOL
+          
+    - name: Install dependencies
+      run: npm install
+      
+    - name: Build project
+      run: npm run build
+      env:
+        CI: false
+      
+    - name: Debug build output
+      run: |
+        echo "Build directory contents:"
+        ls -la build/
+        echo "JavaScript files:"
+        find build -name "*.js" | xargs ls -la
+      
+    - name: Deploy to GitHub Pages
+      uses: JamesIves/github-pages-deploy-action@v4
+      with:
+          branch: gh-pages
+          folder: build
+          clean: true
