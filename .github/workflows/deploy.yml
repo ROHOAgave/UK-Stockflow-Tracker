@@ -1,4 +1,48 @@
-name: Deploy Shipment Planning Tool
+- name: Create React files
+      run: |
+          cat > src/index.js << 'EOL'
+          import React from "react";
+          import ReactDOM from "react-dom/client";
+          import "./index.css";
+          import ShipmentPlanningTool from "./components/ShipmentPlanningTool";
+
+          // Simple app wrapper
+          const App = () => {
+            return <ShipmentPlanningTool />;
+          };
+          
+          // Error boundary to catch rendering errors
+          class ErrorBoundary extends React.Component {
+            constructor(props) {
+              super(props);
+              this.state = { hasError: false, error: null };
+            }
+            
+            static getDerivedStateFromError(error) {
+              return { hasError: true, error };
+            }
+            
+            render() {
+              if (this.state.hasError) {
+                return (
+                  <div style={{ padding: '20px', color: 'red', background: '#fee', border: '1px solid red', margin: '20px' }}>
+                    <h2>Something went wrong.</h2>
+                    <p>{this.state.error?.toString()}</p>
+                  </div>
+                );
+              }
+              
+              return this.props.children;
+            }
+          }
+          
+          const root = ReactDOM.createRoot(document.getElementById("root"));
+          root.render(
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
+          );
+          EOLname: Deploy Shipment Planning Tool
 
 on:
   push:
@@ -40,7 +84,10 @@ jobs:
             "react": "^18.2.0",
             "react-dom": "^18.2.0",
             "react-scripts": "5.0.1",
-            "recharts": "^2.5.0"
+            "recharts": "^2.5.0",
+            "tailwindcss": "^3.3.0",
+            "autoprefixer": "^10.4.14",
+            "postcss": "^8.4.27"
           },
           "scripts": {
             "start": "react-scripts start",
@@ -90,64 +137,46 @@ jobs:
           </html>
           EOL
           
-    - name: Create React files
+    - name: Create Tailwind configuration
       run: |
-          cat > src/index.js << 'EOL'
-          import React from "react";
-          import ReactDOM from "react-dom/client";
-          import "./index.css";
-          import ShipmentPlanningTool from "./components/ShipmentPlanningTool";
-
-          // Simple app wrapper
-          const App = () => {
-            return <ShipmentPlanningTool />;
-          };
-          
-          // Error boundary to catch rendering errors
-          class ErrorBoundary extends React.Component {
-            constructor(props) {
-              super(props);
-              this.state = { hasError: false, error: null };
-            }
-            
-            static getDerivedStateFromError(error) {
-              return { hasError: true, error };
-            }
-            
-            render() {
-              if (this.state.hasError) {
-                return (
-                  <div style={{ padding: '20px', color: 'red', background: '#fee', border: '1px solid red', margin: '20px' }}>
-                    <h2>Something went wrong.</h2>
-                    <p>{this.state.error?.toString()}</p>
-                  </div>
-                );
-              }
-              
-              return this.props.children;
-            }
+        cat > tailwind.config.js << 'EOL'
+        /** @type {import('tailwindcss').Config} */
+        module.exports = {
+          content: [
+            "./src/**/*.{js,jsx,ts,tsx}",
+            "./public/index.html"
+          ],
+          theme: {
+            extend: {},
+          },
+          plugins: [],
+        }
+        EOL
+        
+        cat > postcss.config.js << 'EOL'
+        module.exports = {
+          plugins: {
+            tailwindcss: {},
+            autoprefixer: {},
           }
-          
-          const root = ReactDOM.createRoot(document.getElementById("root"));
-          root.render(
-            <ErrorBoundary>
-              <App />
-            </ErrorBoundary>
-          );
-          EOL
-          
-          cat > src/index.css << 'EOL'
-          @import url('https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css');
-          
-          body {
-            margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-              'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-              sans-serif;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-          }
-          EOL
+        }
+        EOL
+        
+        # Update index.css to properly import Tailwind
+        cat > src/index.css << 'EOL'
+        @tailwind base;
+        @tailwind components;
+        @tailwind utilities;
+        
+        body {
+          margin: 0;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+            'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+            sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+        EOL
           
     - name: Create ShipmentPlanningTool component
       run: |
